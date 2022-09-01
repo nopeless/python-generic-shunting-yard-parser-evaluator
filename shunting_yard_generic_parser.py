@@ -1,6 +1,8 @@
 from enum import Enum
 import re
 
+from scope import LexicalScope, NullScope
+
 ###########
 # Library #
 ###########
@@ -29,13 +31,13 @@ def re_match(string, r, l=None):
     return None
 
 
-class Context:
-    def __init__(
-        self, variables: dict = None, functions: dict = None, parameters: dict = None
-    ):
-        self.variables = variables or {}
-        self.functions = functions or {}
-        self.parameters = parameters or {}
+def pad_newlines_or_blank(string: str, padwith: str = "  "):
+    if string:
+        return "\n" + "\n".join([padwith + v for v in string.split("\n")]) + "\n"
+
+
+def args_to_dict(args):
+    return {f"${idx}": v for idx, v in enumerate(args)}
 
 
 class IToken:
@@ -68,9 +70,6 @@ class IToken:
     def LL(cls, string, gen_func):
         return cls.match(string)
 
-    def evaluate(self, ctx):
-        raise NotImplementedError(self)
-
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.value.__repr__()}>"
 
@@ -99,7 +98,7 @@ class Function(IToken):
     arity = 1
     l = None
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         if self.l is not None:
             return self.l(*args)
 
@@ -241,21 +240,28 @@ class Parser:
                     )
                 while not isinstance(operator_stack[-1], OpenParenthesisToken):
                     output.append(operator_stack.pop())
+
+                # Pop the open parenthesis
                 operator_stack.pop()
 
-                # Parentheses are already removed here
-                if isinstance(last_token, OpenParenthesisToken):
-                    if len(operator_stack) == 0 or not (
-                        r := isinstance(operator_stack[-1], Function)
-                    ):
+                is_empty_expression = isinstance(last_token, OpenParenthesisToken)
+
+                # Function does not exist
+                if len(operator_stack) == 0 or not (
+                    function_exists := isinstance(operator_stack[-1], Function)
+                ):
+                    # Check whether its an empty expression paren. If there is a function,allow it
+                    if is_empty_expression:
+
                         raise UnparsableToken(
                             "Empty expression", token.start, token.end
                         )
 
+                if function_exists:
                     f = operator_stack.pop()
 
                     # Arity is 0
-                    if r:
+                    if is_empty_expression:
                         f.arity = 0
 
                     output.append(f)
@@ -269,6 +275,7 @@ class Parser:
                     output.append(operator_stack.pop())
 
                 # This is the function
+                print("arity increased")
                 operator_stack[-2].arity += 1
             elif isinstance(token, BinaryOperatorToken):
                 # This is the "magical" part of the algorithm
@@ -304,13 +311,20 @@ class Parser:
             if isinstance(token, ISingleExpression):
                 stack.append(token)
             elif isinstance(token, Function):
+                print("Token arity is", token.arity, stack)
                 args = [stack.pop() for _ in range(token.arity)]
                 stack.append(Expression(token, args))
 
         if len(stack) != 1:
             raise Exception(f"Invalid RPN. Stack: ", stack)
 
-        return stack[0]
+        return Scope(stack[0])
+
+    def parse(self, string):
+        """
+        One godly function
+        """
+        return self.rpn_to_ast(self.parse_to_rpn(self.tokenize(string)))
 
 
 class Expression:
@@ -318,11 +332,23 @@ class Expression:
         self.op = op
         self.args = args
 
-    def evaluate(self, ctx):
-        return self.op.exec(ctx, [v.evaluate(ctx) for v in self.args])
+    def evaluate(self, scope):
+        return self.op.exec(scope, [v.evaluate(scope) for v in self.args])
 
     def __repr__(self):
-        return f"{self.op.__repr__()}({', '.join(map(str, self.args))})"
+        return f"{self.op.__repr__()}({pad_newlines_or_blank(', '.join(map(str, self.args)))})"
+
+
+class Scope(IExpression):
+    def __init__(self, exp, scope=None):
+        self.exp = exp
+        self.scope = scope
+
+    def evaluate(self, scope=None):
+        return self.exp.evaluate(scope or self.scope or NullScope())
+
+    def __repr__(self):
+        return f"Scope({self.exp.__repr__()})"
 
 
 # Built in tokens
@@ -334,7 +360,7 @@ class Number(ConstantToken):
     re_l = lambda x: float(x.group(0)) if "." in x.group(0) else int(x.group(0))
     m_re = r"[0-9]+(?:\.\d+)?"
 
-    def evaluate(self, ctx):
+    def evaluate(self, scope):
         return self.value
 
 
@@ -342,7 +368,7 @@ class Boolean(ConstantToken):
     re_l = lambda x: x.group(0)[0].lower() == "t"
     m_re = r"T(?:rue|RUE)?|F(?:alse|ALSE)?"
 
-    def evaluate(self, ctx):
+    def evaluate(self, scope):
         return self.value
 
 
@@ -354,38 +380,27 @@ class Separator(SeparatorToken):
     m_re = r","
 
 
-class Literal(ISingleExpression):
-    m_str = r"[a-zA-Z_][a-zA-Z0-9_]*"
-
-    def evaluate(self, ctx):
-        return ctx.variables[self.value]
-
-
 class Variable(IdentifierToken):
-    def evaluate(self, ctx):
-        return ctx.variables[self.value]
+    m_re = r"[a-zA-Z_][a-zA-Z0-9_]*"
+
+    def evaluate(self, scope):
+        return scope.get_identifier(self.value)
 
 
-class Parameter(IdentifierToken):
-    def evaluate(self, ctx):
-        return ctx.parameters[self.value]
+# Acts almost like a Variable
+class Parameter(Variable):
+    m_re = r"\$(?:[1-9]\d*|0)"
 
 
 class IdentifierFunction(Function):
-    def exec(self, ctx, args):
-        print("args recieved", self, args)
-        # TODO
-        # Fix this later
+    def exec(self, scope, args):
         return (
-            ctx.functions[self.value].evaluate(
-                Context(
-                    ctx.variables,
-                    ctx.functions,
-                    {f"${i}": v for i, v in enumerate(args)},
-                )
+            scope.get_identifier(self.value).evaluate(
+                scope.inner_scope(args_to_dict(args))
             )
-            if isinstance(ctx.functions[self.value], Expression)
-            else ctx.functions[self.value](*args)
+            # Runtime check
+            if isinstance(scope.get_identifier(self.value), IExpression)
+            else scope.get_identifier(self.value)(*args)
         )
 
 
@@ -413,61 +428,129 @@ class CloseParenthesis(CloseParenthesisToken):
     m_str = ")"
 
 
+class Power(BinaryOperatorToken):
+    associativity = Associativity.RIGHT
+    precedence = 4
+    m_re = r"\*\*"
+
+    def exec(self, scope, args):
+        return args[0] ** args[1]
+
+
 class Multiplication(BinaryOperatorToken):
-    precedence = 1
+    precedence = 3
     m_str = "*"
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return args[0] * args[1]
 
 
 class Division(BinaryOperatorToken):
-    precedence = 1
+    precedence = 3
     m_str = "/"
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return args[0] / args[1]
 
 
 class AdditionAsBinary(BinaryOperatorToken):
-    precedence = 0
+    precedence = 2
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return args[0] + args[1]
 
 
 class AdditionAsUnary(UnaryOperatorToken):
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return +args[0]
 
 
 class Addition(AdditionAsBinary, AdditionAsUnary):
-    precedence = 0
     m_str = "+"
 
 
 class SubtractionAsBinary(BinaryOperatorToken):
-    precedence = 0
+    precedence = 2
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return args[0] - args[1]
 
 
 class SubtractionAsUnary(UnaryOperatorToken):
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return -args[0]
 
 
 class Subtraction(SubtractionAsBinary, SubtractionAsUnary):
-    precedence = 0
     m_str = "-"
+
+
+class And(BinaryOperatorToken):
+    precedence = 1
+    m_re = r"&&|&|\^"
+
+    def exec(self, scope, args):
+        return args[0] and args[1]
+
+
+class Or(BinaryOperatorToken):
+    precedence = 0
+    m_re = r"\|\||\||v"
+
+    def exec(self, scope, args):
+        return args[0] or args[1]
 
 
 class Negation(UnaryOperatorToken):
     m_re = r"!|~"
 
-    def exec(self, ctx, args):
+    def exec(self, scope, args):
         return not args[0]
+
+
+class ITokenCollection(Enum):
+    @classmethod
+    def from_str(cls, string):
+        return cls[string.upper()]
+
+    @classmethod
+    def list(cls):
+        return list(map(lambda c: c.value, cls))
+
+
+class BaseTokens(ITokenCollection):
+    WHITESPACE = Whitespace
+
+
+class ArithmeticTokens(ITokenCollection):
+    ADDITION = Addition
+    SUBTRACTION = Subtraction
+    MULTIPLICATION = Multiplication
+    DIVISION = Division
+    OPEN_PARENTHESIS = OpenParenthesis
+    CLOSE_PARENTHESIS = CloseParenthesis
+
+
+class LogicalTokens(ITokenCollection):
+    BOOLEAN = Boolean
+    NEGATION = Negation
+    AND = And
+    OR = Or
+
+
+class NumericTokens(ITokenCollection):
+    NUMBER = Number
+
+
+class Tokenlib:
+    arithmetic = ArithmeticTokens
+    logical = LogicalTokens
+    base = BaseTokens
+    numeric = NumericTokens
+
+    @staticmethod
+    def load(*args):
+        return [t for arg in args for t in arg.list()]
 
 
 ########################################################################
@@ -481,6 +564,7 @@ tokens = [
     CloseParenthesis,
     Separator,
     # Identifiers
+    Parameter,
     Identifier,
     # Literals
     Number,
@@ -496,7 +580,7 @@ tokens = [
 
 parser = Parser(tokens)
 
-tokenized = list(parser.tokenize("square(3)"))
+tokenized = list(parser.tokenize("Hello(3) + Hello(3)"))
 
 print(tokenized)
 
@@ -508,8 +592,13 @@ ast = parser.rpn_to_ast(rpn)
 
 print(ast)
 
-hello_func = parser.rpn_to_ast(parser.parse_to_rpn(parser.tokenize("1 + 1")))
+hello_func = parser.rpn_to_ast(parser.parse_to_rpn(parser.tokenize("$0 * 100")))
 
-print(hello_func)
+print("hello function is", hello_func)
+print("expression is", ast)
 
-print(ast.evaluate(Context({}, {"Hello": hello_func, "square": lambda x: x**2})))
+print(
+    ast.evaluate(
+        LexicalScope({"Hello": hello_func, "square": lambda x: x**2, "type": type})
+    )
+)
