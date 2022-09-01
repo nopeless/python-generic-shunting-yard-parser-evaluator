@@ -1,4 +1,4 @@
-from src.shunting_yard_generic_parser import *
+from shunting_yard_generic_parser import *
 
 import itertools
 

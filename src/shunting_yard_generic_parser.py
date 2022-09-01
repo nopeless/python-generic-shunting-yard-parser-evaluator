@@ -1,7 +1,7 @@
 from enum import Enum
 import re
 
-from .scope import LexicalScope, NullScope
+from scope import *
 
 ###########
 # Library #
@@ -342,9 +342,9 @@ class Expression(IExpression):
 # TODO write proper AST visitor later
 def ast_visitor(ast, l):
     if isinstance(ast, IExpression):
-        l(ast)
         for arg in ast.args:
             ast_visitor(arg, l)
+        l(ast)
 
     else:
         l(ast)

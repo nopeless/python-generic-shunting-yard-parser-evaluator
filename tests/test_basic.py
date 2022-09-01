@@ -1,6 +1,5 @@
 from src.shunting_yard_generic_parser import *
 
-########################################################################
 tokens = [
     # Whitespace
     Whitespace,
