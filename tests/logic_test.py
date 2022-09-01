@@ -35,19 +35,8 @@ print(rpn)
 
 ast = parser.rpn_to_ast(rpn)
 
-print(ast)
-
-hello_func = parser.rpn_to_ast(parser.parse_to_rpn(parser.tokenize("$0 * 100")))
-
-print("hello function is", hello_func)
 print("expression is", ast)
 
-print(
-    ast.evaluate(
-        LexicalScope(
-            {"P": 3, "Hello": hello_func, "square": lambda x: x**2, "type": type}
-        )
-    )
-)
+print(ast.evaluate(LexicalScope({"P": False, "Q": True, "R": False})))
 
 print(get_variables(ast))

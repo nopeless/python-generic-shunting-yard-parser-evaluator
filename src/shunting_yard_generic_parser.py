@@ -246,6 +246,8 @@ class Parser:
 
                 is_empty_expression = isinstance(last_token, OpenParenthesisToken)
 
+                function_exists = False
+
                 # Function does not exist
                 if len(operator_stack) == 0 or not (
                     function_exists := isinstance(operator_stack[-1], Function)
