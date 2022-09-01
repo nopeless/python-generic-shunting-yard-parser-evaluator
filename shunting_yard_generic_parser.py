@@ -524,6 +524,22 @@ class Or(BinaryOperatorToken):
         return args[0] or args[1]
 
 
+class Implies(BinaryOperatorToken):
+    precedence = 0
+    m_str = r"=>"
+
+    def exec(self, scope, args):
+        return not args[0] or args[1]
+
+
+class Iff(BinaryOperatorToken):
+    precedence = 0
+    m_str = r"<=>"
+
+    def exec(self, scope, args):
+        return args[0] == args[1]
+
+
 class Negation(UnaryOperatorToken):
     m_re = r"!|~"
 
@@ -564,6 +580,10 @@ class LogicalTokens(ITokenCollection):
     NEGATION = Negation
     AND = And
     OR = Or
+    IMPLIES = Implies
+    IFF = Iff
+    OPEN_PARENTHESIS = OpenParenthesis
+    CLOSE_PARENTHESIS = CloseParenthesis
 
 
 class NumericTokens(ITokenCollection):
@@ -579,4 +599,4 @@ class Tokenlib:
 
     @staticmethod
     def load(*args):
-        return [t for arg in args for t in arg.list()]
+        return list(set(t for arg in args for t in arg.list()))
