@@ -1,7 +1,7 @@
 from enum import Enum
 import re
 
-from scope import LexicalScope, NullScope
+from .scope import LexicalScope, NullScope
 
 ###########
 # Library #
@@ -312,7 +312,7 @@ class Parser:
             if isinstance(token, ISingleExpression):
                 stack.append(token)
             elif isinstance(token, Function):
-                args = [stack.pop() for _ in range(token.arity)]
+                args = [stack.pop() for _ in range(token.arity)][::-1]
                 stack.append(Expression(token, args))
 
         if len(stack) != 1:

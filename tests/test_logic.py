@@ -16,6 +16,8 @@ tokens = [
     Boolean,
     # Unary operators
     Negation,
+    # Logic,
+    *Tokenlib.logical.list(),
     # Arithmetic operators (including Unary)
     Multiplication,
     Division,
@@ -25,7 +27,7 @@ tokens = [
 
 parser = Parser(tokens)
 
-tokenized = list(parser.tokenize("Hello(P) + Hello(P)"))
+tokenized = list(parser.tokenize("(P => Q) => R"))
 
 print(tokenized)
 

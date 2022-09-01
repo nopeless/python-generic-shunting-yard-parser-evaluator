@@ -1,4 +1,4 @@
-from frozen import FrozenDict, FrozenList
+from .frozen import FrozenDict, FrozenList
 
 
 class LexicalScope:

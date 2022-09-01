@@ -1,8 +1,8 @@
+from src.shunting_yard_generic_parser import *
+
 import itertools
 
 import pandas as pd
-
-from shunting_yard_generic_parser import LexicalScope, Parser, Tokenlib, get_variables
 
 
 def boolean_permutation(length):
@@ -38,5 +38,5 @@ def print_truth_table(inp):
     print(s)
 
 
-# print_truth_table("P => (Q => R)")
+print_truth_table("P => (Q => R)")
 print_truth_table("(P => Q) => R")
