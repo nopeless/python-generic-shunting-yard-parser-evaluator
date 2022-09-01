@@ -224,7 +224,7 @@ class Parser:
         operator_stack = []
 
         for token in tokens:
-            print(f"on token {token.value}: ", end="")
+            # print(f"on token {token.value}: ", end="")
 
             if isinstance(token, ISingleExpression):
                 output.append(token)
@@ -275,7 +275,6 @@ class Parser:
                     output.append(operator_stack.pop())
 
                 # This is the function
-                print("arity increased")
                 operator_stack[-2].arity += 1
             elif isinstance(token, BinaryOperatorToken):
                 # This is the "magical" part of the algorithm
@@ -297,7 +296,7 @@ class Parser:
                 raise UnparsableToken(
                     f"{token.__repr__()} cannot be processed", token.start, token.end
                 )
-            print([v.value for v in output], [v.value for v in operator_stack])
+            # print([v.value for v in output], [v.value for v in operator_stack])
 
             last_token = token
 
@@ -311,14 +310,13 @@ class Parser:
             if isinstance(token, ISingleExpression):
                 stack.append(token)
             elif isinstance(token, Function):
-                print("Token arity is", token.arity, stack)
                 args = [stack.pop() for _ in range(token.arity)]
                 stack.append(Expression(token, args))
 
         if len(stack) != 1:
             raise Exception(f"Invalid RPN. Stack: ", stack)
 
-        return Scope(stack[0])
+        return Scope(stack)
 
     def parse(self, string):
         """
@@ -327,7 +325,7 @@ class Parser:
         return self.rpn_to_ast(self.parse_to_rpn(self.tokenize(string)))
 
 
-class Expression:
+class Expression(IExpression):
     def __init__(self, op, args):
         self.op = op
         self.args = args
@@ -339,10 +337,35 @@ class Expression:
         return f"{self.op.__repr__()}({pad_newlines_or_blank(', '.join(map(str, self.args)))})"
 
 
+# TODO write proper AST visitor later
+def ast_visitor(ast, l):
+    if isinstance(ast, IExpression):
+        l(ast)
+        for arg in ast.args:
+            ast_visitor(arg, l)
+
+    else:
+        l(ast)
+
+
+def get_variables(ast):
+    variables = set()
+    ast_visitor(
+        ast,
+        lambda x: variables.add(x.value) if isinstance(x, Variable) else None,
+    )
+    return [*variables]
+
+
 class Scope(IExpression):
-    def __init__(self, exp, scope=None):
-        self.exp = exp
+    def __init__(self, exps, scope=None):
+        # Future proof
+        self.exp = exps[0]
         self.scope = scope
+
+    @property
+    def args(self):
+        return [self.exp]
 
     def evaluate(self, scope=None):
         return self.exp.evaluate(scope or self.scope or NullScope())
@@ -518,6 +541,11 @@ class ITokenCollection(Enum):
         return list(map(lambda c: c.value, cls))
 
 
+class FunctionalToken(ITokenCollection):
+    PARAMETER = Parameter
+    IDENTIFIER = Identifier
+
+
 class BaseTokens(ITokenCollection):
     WHITESPACE = Whitespace
 
@@ -547,58 +575,8 @@ class Tokenlib:
     logical = LogicalTokens
     base = BaseTokens
     numeric = NumericTokens
+    functional = FunctionalToken
 
     @staticmethod
     def load(*args):
         return [t for arg in args for t in arg.list()]
-
-
-########################################################################
-
-
-tokens = [
-    # Whitespace
-    Whitespace,
-    # Control flow
-    OpenParenthesis,
-    CloseParenthesis,
-    Separator,
-    # Identifiers
-    Parameter,
-    Identifier,
-    # Literals
-    Number,
-    Boolean,
-    # Unary operators
-    Negation,
-    # Arithmetic operators (including Unary)
-    Multiplication,
-    Division,
-    Addition,
-    Subtraction,
-]
-
-parser = Parser(tokens)
-
-tokenized = list(parser.tokenize("Hello(3) + Hello(3)"))
-
-print(tokenized)
-
-rpn = parser.parse_to_rpn(tokenized)
-
-print(rpn)
-
-ast = parser.rpn_to_ast(rpn)
-
-print(ast)
-
-hello_func = parser.rpn_to_ast(parser.parse_to_rpn(parser.tokenize("$0 * 100")))
-
-print("hello function is", hello_func)
-print("expression is", ast)
-
-print(
-    ast.evaluate(
-        LexicalScope({"Hello": hello_func, "square": lambda x: x**2, "type": type})
-    )
-)
