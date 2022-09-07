@@ -37,6 +37,10 @@ def print_truth_table(inp):
 
     print(s)
 
-
-print_truth_table("P => (Q => R)")
-print_truth_table("(P => Q) => R")
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) >= 2:
+        print_truth_table(sys.argv[1])
+    else:
+        print_truth_table("P => (Q => R)")
+        print_truth_table("(P => Q) => R")
