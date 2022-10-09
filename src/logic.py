@@ -20,7 +20,7 @@ def generate_truth_table(inp):
     """
     p = parser.parse(inp)
 
-    variables = get_variables(p)
+    variables = sorted(get_variables(p))
 
     headers = [*variables, inp]
     rows = []

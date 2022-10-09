@@ -224,7 +224,7 @@ class Parser:
         operator_stack = []
 
         for token in tokens:
-            # print(f"on token {token.value}: ", end="")
+            print(f"on token {token.value}: ", end="")
 
             if isinstance(token, ISingleExpression):
                 output.append(token)
@@ -250,7 +250,9 @@ class Parser:
 
                 # Function does not exist
                 if len(operator_stack) == 0 or not (
-                    function_exists := isinstance(operator_stack[-1], Function)
+                    function_exists := isinstance(
+                        operator_stack[-1], IdentifierFunction
+                    )
                 ):
                     # Check whether its an empty expression paren. If there is a function,allow it
                     if is_empty_expression:
@@ -268,7 +270,7 @@ class Parser:
 
                     output.append(f)
 
-            elif isinstance(token, Function):
+            elif isinstance(token, IdentifierFunction):
                 operator_stack.append(token)
             elif isinstance(token, SeparatorToken):
                 while operator_stack and not isinstance(
@@ -288,7 +290,7 @@ class Parser:
                         self.resolve_ambiguous_token_to(token, UnaryOperatorToken)
                     )
                 else:
-                    if self.should_pop_op(operator_stack, token):
+                    while self.should_pop_op(operator_stack, token):
                         output.append(operator_stack.pop())
 
                     operator_stack.append(token)
@@ -298,7 +300,7 @@ class Parser:
                 raise UnparsableToken(
                     f"{token.__repr__()} cannot be processed", token.start, token.end
                 )
-            # print([v.value for v in output], [v.value for v in operator_stack])
+            print([v.value for v in output], [v.value for v in operator_stack])
 
             last_token = token
 
@@ -602,3 +604,15 @@ class Tokenlib:
     @staticmethod
     def load(*args):
         return list(set(t for arg in args for t in arg.list()))
+
+
+if __name__ == "__main__":
+
+    tokens = Tokenlib.load(
+        Tokenlib.arithmetic, Tokenlib.numeric, Tokenlib.logical, Tokenlib.base
+    )
+
+    parser = Parser(tokens)
+    s = "1-(3+3)*4"
+    print(s)
+    print(parser.rpn_to_ast(parser.parse_to_rpn(parser.tokenize(s))))
